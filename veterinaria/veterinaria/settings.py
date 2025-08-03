@@ -133,3 +133,4 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://frontendlauniondeploy-production.up.railway.app/",
 ]
+CORS_ALLOW_ALL_ORIGINS = True
