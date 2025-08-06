@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-_+=nq_7-r5(fz^wz@tmtyvw3tx(hp$0hmd1os)l$6t09v()hua
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -157,3 +157,5 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'veterinaria.la.union.lp@gmail.com'
 EMAIL_HOST_PASSWORD = 'ecsi qdvk ejsk erxz'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+CORS_ALLOW_ALL_ORIGINS = True
