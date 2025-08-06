@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (
     Usuario, Mascota, Vacuna, MascotaVacuna, Cita, 
     ComposicionConsulta, ObservacionSintoma, EvaluacionDiagnostico,
@@ -69,3 +70,31 @@ class LogAccesoSerializer(serializers.ModelSerializer):
     class Meta:
         model = LogAcceso
         fields = '__all__'
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        try:
+            user = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            raise serializers.ValidationError("Usuario no encontrado")
+
+        if user.contraseña_hash != password:
+            raise serializers.ValidationError("Contraseña incorrecta")
+
+        data = super().validate({"username": email, "password": password})
+        data["user"] = {
+            "id": user.id,
+            "nombre_completo": user.nombre_completo,
+            "email": user.email,
+            "rol": user.rol,
+            "fotografia": user.fotografia,
+        }
+        return data
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        return token
