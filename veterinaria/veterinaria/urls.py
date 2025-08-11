@@ -30,6 +30,9 @@ from gestion_clinica.views import (
     EvaluacionDiagnosticoViewSet, TratamientoViewSet, AccionTratamientoViewSet,
     RecetaViewSet, ChatbotConsultaViewSet, LogAccesoViewSet
 )
+
+from gestion_clinica.views import *
+
 router = routers.DefaultRouter()
 router.register('usuarios', UsuarioViewSet)
 router.register('mascotas', MascotaViewSet)
@@ -53,4 +56,15 @@ urlpatterns = [
     path('api/login/', login_usuario),
     path('api/enviar-codigo/', enviar_codigo, name='enviar_codigo'),
     path('api/confirmar-cambio/', confirmar_cambio, name='confirmar_cambio'),
+    path('api/clientes/', listar_clientes, name='listar_clientes'),
+    path('api/clientes/crear/', crear_cliente, name='crear_cliente'),
+    path('api/clientes/<int:id_usuario>/', ver_cliente, name='ver_cliente'),
+    path('api/clientes/<int:id_usuario>/editar/', editar_cliente, name='editar_cliente'),
+    path('api/clientes/<int:id_usuario>/eliminar/', eliminar_cliente, name='eliminar_cliente'),
+    path('api/mascota/', listar_mascotas, name='listar_mascotas'),
+    path('api/mascota/<int:id_usuario>/', listar_mascotas_cliente, name='listar_mascotas_cliente'),
+    path('api/mascota/<int:id_mascota>/', ver_mascota, name='ver_mascota'),
+    path('api/mascota/crear/', crear_mascota, name='crear_mascota'),
+    path('api/mascota/<int:id_mascota>/editar/', editar_mascota, name='editar_mascota'),
+    path('api/mascota/<int:id_mascota>/eliminar/', eliminar_mascota, name='eliminar_mascota'),
 ]

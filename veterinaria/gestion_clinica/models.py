@@ -1,17 +1,20 @@
 from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 
 # ============================
 # Usuarios
 # ============================
-class Usuario(models.Model):
+class Usuario(AbstractBaseUser, PermissionsMixin):
     ROLES = [
         ('administrador', 'Administrador'),
         ('veterinario', 'Veterinario'),
         ('recepcionista', 'Recepcionista'),
         ('cliente', 'Cliente'),
     ]
-
+    
     id_usuario = models.AutoField(primary_key=True)
+    ci = models.CharField(max_length=15, unique=True) 
+    telefono = models.IntegerField(blank=True)
     nombre_completo = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
     contrasenia_hash = models.CharField(max_length=255)
@@ -19,6 +22,49 @@ class Usuario(models.Model):
     fotografia = models.CharField(max_length=255, blank=True, null=True)
     codigo = models.CharField(max_length=6, blank=True, null=True)
     estado = models.BooleanField(default=True)
+    direccion = models.CharField(max_length=255, blank=True, null=True)
+    is_staff = models.BooleanField(default=False)
+    is_superuser = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)    
+    last_login = models.DateTimeField(blank=True, null=True)
+    
+    def has_perm(self, perm, obj=None):
+        return self.is_superuser or super().has_perm(perm, obj)
+
+    def has_module_perms(self, app_label):
+        return self.is_superuser or super().has_module_perms(app_label)
+    
+    @property
+    def last_login_dt(self):
+        return self.last_login
+
+    @last_login_dt.setter
+    def last_login_dt(self, value):
+        self.last_login = value
+
+    USERNAME_FIELD = 'email'
+
+    def set_password(self, raw_password):
+        self.contrasenia_hash = raw_password 
+
+    def check_password(self, raw_password):
+        return self.contrasenia_hash == raw_password
+    
+    @property
+    def password(self):
+        return self.contrasenia_hash
+
+    @password.setter
+    def password(self, value):
+        self.contrasenia_hash = value
+
+    @property
+    def last_login_dt(self):
+        return self.last_login
+
+    @last_login_dt.setter
+    def last_login_dt(self, value):
+        self.last_login = value
 
     class Meta:
         db_table = 'usuario'
@@ -43,6 +89,7 @@ class Mascota(models.Model):
     sexo = models.CharField(max_length=1, choices=SEXO, blank=True, null=True)
     fecha_nacimiento = models.DateField(blank=True, null=True)
     fotografia = models.CharField(max_length=255, blank=True, null=True)
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'mascota'
@@ -215,6 +262,7 @@ class LogAcceso(models.Model):
     modulo = models.CharField(max_length=50)
     fecha_acceso = models.DateTimeField()
     accion = models.CharField(max_length=50, choices=ACCIONES)
+    codigo_modulo = models.CharField(max_length=255, null=True)
 
     class Meta:
         db_table = 'log_acceso'
