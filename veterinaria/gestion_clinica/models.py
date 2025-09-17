@@ -27,7 +27,8 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     is_superuser = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)    
     last_login = models.DateTimeField(blank=True, null=True)
-    
+    intentos_sesion = models.IntegerField(default=0)
+
     def has_perm(self, perm, obj=None):
         return self.is_superuser or super().has_perm(perm, obj)
 
@@ -106,6 +107,8 @@ class Vacuna(models.Model):
     descripcion = models.TextField(blank=True, null=True)
     dosis_recomendada = models.CharField(max_length=50, blank=True, null=True)
     edad_recomendada = models.CharField(max_length=50, blank=True, null=True)
+    estado = models.BooleanField(default=True)
+
 
     class Meta:
         db_table = 'vacuna'
@@ -118,9 +121,11 @@ class MascotaVacuna(models.Model):
     id_mascota_vacuna = models.AutoField(primary_key=True)
     mascota = models.ForeignKey(Mascota, on_delete=models.CASCADE)
     vacuna = models.ForeignKey(Vacuna, on_delete=models.CASCADE)
+    veterinario = models.ForeignKey(Usuario, on_delete=models.CASCADE, limit_choices_to={'rol': 'veterinario'})
     fecha_aplicacion = models.DateField()
     lote_vacuna = models.CharField(max_length=50, blank=True, null=True)
     proxima_dosis = models.DateField(blank=True, null=True)
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'mascota_vacuna'
@@ -134,6 +139,7 @@ class Cita(models.Model):
         ('pendiente', 'Pendiente'),
         ('asistida', 'Asistida'),
         ('cancelada', 'Cancelada'),
+        ('programada', 'Programada'),
     ]
 
     id_cita = models.AutoField(primary_key=True)
@@ -142,6 +148,7 @@ class Cita(models.Model):
     fecha_cita = models.DateTimeField()
     estado_cita = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     motivo = models.TextField(blank=True, null=True)
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'cita'
@@ -160,6 +167,8 @@ class ComposicionConsulta(models.Model):
     motivo_consulta = models.TextField(blank=True, null=True)
     costo_consulta = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     monto_cancelado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    estado = models.BooleanField(default=True)
+
 
     class Meta:
         db_table = 'composicion_consulta'
@@ -179,6 +188,8 @@ class ObservacionSintoma(models.Model):
     descripcion = models.TextField()
     proporcionado_por = models.CharField(max_length=20, choices=PROPORCIONADO_POR)
     severidad_aparente = models.CharField(max_length=20, choices=[('leve', 'Leve'), ('moderado', 'Moderado'), ('grave', 'Grave')])
+    estado = models.BooleanField(default=True)
+
 
     class Meta:
         db_table = 'observacion_sintoma'
@@ -192,6 +203,8 @@ class EvaluacionDiagnostico(models.Model):
     diagnostico = models.TextField()
     clasificacion_cie = models.CharField(max_length=10, blank=True, null=True)
     notas = models.TextField(blank=True, null=True)
+    estado = models.BooleanField(default=True)
+
 
     class Meta:
         db_table = 'evaluacion_diagnostico'
@@ -204,6 +217,7 @@ class Tratamiento(models.Model):
     nombre_tratamiento = models.CharField(max_length=100)
     descripcion = models.TextField(blank=True, null=True)
     via_administracion = models.CharField(max_length=50, blank=True, null=True)
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'tratamiento'
@@ -220,6 +234,7 @@ class AccionTratamiento(models.Model):
     observaciones = models.TextField(blank=True, null=True)
     monto_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     monto_cancelado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'accion_tratamiento'
@@ -232,6 +247,7 @@ class Receta(models.Model):
     composicion = models.ForeignKey(ComposicionConsulta, on_delete=models.CASCADE)
     fecha_emision = models.DateField()
     contenido = models.TextField()
+    estado = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'receta'

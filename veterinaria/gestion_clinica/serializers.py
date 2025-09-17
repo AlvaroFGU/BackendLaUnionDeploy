@@ -177,6 +177,9 @@ class ClienteSerializer(serializers.ModelSerializer):
 from datetime import date, timedelta
 
 class MascotaSerializer(serializers.ModelSerializer):
+    nombre_duenio = serializers.CharField(source='propietario.nombre_completo', read_only=True)
+    ci_duenio = serializers.CharField(source='propietario.ci', read_only=True)
+
     class Meta:
         model = Mascota
         fields = '__all__'
@@ -198,3 +201,86 @@ class MascotaSerializer(serializers.ModelSerializer):
             if value < hace_25_anios:
                 raise serializers.ValidationError("La fecha no puede ser menor a hace 25 años.")
         return value
+    
+class VacunaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Vacuna
+        fields = '__all__'
+    
+    def validate_nombre_vacuna(self, value):
+        value = value.strip()
+        if len(value) < 3:
+            raise serializers.ValidationError("El nombre de la vacuna debe tener al menos 3 caracteres.")
+        if len(value) > 100:
+            raise serializers.ValidationError("El nombre de la vacuna no debe superar los 100 caracteres.")
+
+        if Vacuna.objects.filter(nombre_vacuna__iexact=value).exclude(id_vacuna=self.instance.id_vacuna if self.instance else None).exists():
+            raise serializers.ValidationError("Ya existe una vacuna con este nombre.")
+        return value
+    
+    def validate_descripcion(self, value):
+        if value:
+            if len(value.strip()) < 10:
+                raise serializers.ValidationError("La descripción debe tener al menos 10 caracteres.")
+            if len(value.strip()) > 250:
+                raise serializers.ValidationError("La descripción no debe superar los 250 caracteres.")
+        return value
+
+    def validate_dosis_recomendada(self, value):
+        if value and len(value.strip()) > 50:
+            raise serializers.ValidationError("La dosis recomendada no debe superar los 50 caracteres.")
+        return value
+
+    def validate_edad_recomendada(self, value):
+        if value and len(value.strip()) > 50:
+            raise serializers.ValidationError("La edad recomendada no debe superar los 50 caracteres.")
+        return value
+    
+class MascotaVacunaSerializer(serializers.ModelSerializer):
+    nombre_mascota = serializers.CharField(source='mascota.nombre', read_only=True)
+    especie = serializers.CharField(source='mascota.especie', read_only=True)
+    nombre_duenio = serializers.CharField(source='mascota.propietario.nombre_completo', read_only=True)
+    nombre_veterinario = serializers.CharField(source='veterinario.nombre_completo', read_only=True)
+    nombre_vacuna = serializers.CharField(source='vacuna.nombre_vacuna', read_only=True)
+    descripcion_vacuna = serializers.CharField(source='vacuna.descripcion', read_only=True)
+
+    class Meta:
+        model = MascotaVacuna
+        fields = '__all__'
+
+    def validate(self, data):
+        from datetime import date
+        if data['fecha_aplicacion'] > date.today():
+            raise serializers.ValidationError({"fecha_aplicacion": "La fecha de aplicación no puede ser futura."})
+        return data
+    
+class CitaSerializer(serializers.ModelSerializer):
+    nombre_mascota = serializers.CharField(source='mascota.nombre', read_only=True)
+    especie = serializers.CharField(source='mascota.especie', read_only=True)
+    nombre_duenio = serializers.CharField(source='mascota.propietario.nombre_completo', read_only=True)
+    nombre_veterinario = serializers.CharField(source='veterinario.nombre_completo', read_only=True)
+
+    class Meta:
+        model = Cita
+        fields = '__all__'
+
+    def validate_fecha_cita(self, value):
+        from datetime import datetime
+        if value < datetime.now():
+            raise serializers.ValidationError("La fecha de la cita no puede estar en el pasado.")
+        return value
+    
+class TratamientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tratamiento
+        fields = '__all__'
+
+    def validate_nombre_tratamiento(self, value):
+        nombre = value.strip()
+        tratamiento_id = self.instance.id_tratamiento if self.instance else None
+        
+        if Tratamiento.objects.filter(nombre_tratamiento__iexact=nombre)\
+            .exclude(id_tratamiento=tratamiento_id).exists():
+            raise serializers.ValidationError("El nombre del tratamiento ya existe.")
+        
+        return nombre

@@ -138,7 +138,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://frontendlauniondeploy-production.up.railway.app",
+    "https://frontendlauniondeploy-production-7135.up.railway.app/",
 ]
 
 from datetime import timedelta
