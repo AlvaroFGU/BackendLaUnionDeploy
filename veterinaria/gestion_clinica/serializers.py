@@ -126,9 +126,11 @@ class ClienteSerializer(serializers.ModelSerializer):
             )
         ]
     )
+    mascotas = serializers.SerializerMethodField()
+
     class Meta:
         model = Usuario
-        fields = ['id_usuario', 'ci', 'telefono', 'nombre_completo', 'email', 'direccion', 'fotografia', 'rol', 'codigo', 'contrasenia_hash']
+        fields = ['id_usuario', 'ci', 'telefono', 'nombre_completo', 'email', 'direccion', 'fotografia', 'rol', 'codigo', 'contrasenia_hash', 'mascotas']
     extra_kwargs = {
             'ci': {
                 'error_messages': {
@@ -172,6 +174,8 @@ class ClienteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("La dirección debe tener entre 5 y 255 caracteres.")
         return value
 
+    def get_mascotas(self, obj):
+        return list(Mascota.objects.filter(propietario=obj, estado=True).values_list('nombre', flat=True))
 
 #validaciones CRUD mascota
 from datetime import date, timedelta
@@ -253,22 +257,51 @@ class MascotaVacunaSerializer(serializers.ModelSerializer):
         if data['fecha_aplicacion'] > date.today():
             raise serializers.ValidationError({"fecha_aplicacion": "La fecha de aplicación no puede ser futura."})
         return data
-    
+
+
+from django.utils import timezone
+
 class CitaSerializer(serializers.ModelSerializer):
     nombre_mascota = serializers.CharField(source='mascota.nombre', read_only=True)
     especie = serializers.CharField(source='mascota.especie', read_only=True)
     nombre_duenio = serializers.CharField(source='mascota.propietario.nombre_completo', read_only=True)
     nombre_veterinario = serializers.CharField(source='veterinario.nombre_completo', read_only=True)
+    ci_veterinario = serializers.CharField(source='veterinario.ci', read_only=True)
+    ci_duenio = serializers.CharField(source='mascota.propietario.ci', read_only=True)
 
     class Meta:
         model = Cita
         fields = '__all__'
 
     def validate_fecha_cita(self, value):
-        from datetime import datetime
-        if value < datetime.now():
-            raise serializers.ValidationError("La fecha de la cita no puede estar en el pasado.")
+        # Verifica que la fecha no sea en el pasado
+        if value < timezone.now():
+            raise serializers.ValidationError("La fecha de la cita no puede tener una fecha pasada.")
         return value
+
+    def validate_mascota(self, value):
+        mascota = self.initial_data.get('mascota')  # Obtener la mascota desde los datos iniciales
+        if mascota:
+            # Verifica si la mascota ya tiene una cita programada o pendiente
+            if Cita.objects.filter(mascota=mascota, estado_cita__in=['programada', 'pendiente']).exists():
+                # Verifica si ya está programada
+                if Cita.objects.filter(mascota=mascota, estado_cita='programada').exists():
+                    raise serializers.ValidationError("La mascota ya tiene una cita programada.", code='mascota_programada')
+                # Verifica si ya está pendiente
+                elif Cita.objects.filter(mascota=mascota, estado_cita='pendiente').exists():
+                    raise serializers.ValidationError("La mascota ya tiene una solicitud de cita pendiente.", code='mascota_pendiente')
+        return value
+
+    def validate_veterinario(self, value):
+        veterinario = self.initial_data.get('veterinario')  # Obtener el veterinario desde los datos iniciales
+        fecha_cita = self.initial_data.get('fecha_cita')  # Obtener la fecha de la cita desde los datos iniciales
+
+        if veterinario and fecha_cita:
+            # Verifica si el veterinario tiene una cita programada para el mismo horario
+            if Cita.objects.filter(veterinario=veterinario, fecha_cita=fecha_cita).exists():
+                raise serializers.ValidationError("El veterinario ya tiene una cita programada para este horario.", code='veterinario_ocupado')
+        return value
+
     
 class TratamientoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -284,3 +317,117 @@ class TratamientoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("El nombre del tratamiento ya existe.")
         
         return nombre
+
+#consulta compleja
+from django.db import transaction
+from rest_framework import serializers
+from .models import (
+    ComposicionConsulta, ObservacionSintoma, EvaluacionDiagnostico,
+    AccionTratamiento, Tratamiento, Receta
+)
+
+class ObservacionSintomaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ObservacionSintoma
+        fields = ['descripcion', 'proporcionado_por', 'severidad_aparente']
+
+class EvaluacionDiagnosticoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EvaluacionDiagnostico
+        fields = ['diagnostico', 'clasificacion_cie', 'notas']
+
+class AccionTratamientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AccionTratamiento
+        fields = [
+            'tratamiento', 'fecha_inicio', 'fecha_fin', 'observaciones',
+            'monto_total', 'monto_cancelado'
+        ]
+
+    def validate(self, data):
+        if data['monto_cancelado'] > data['monto_total']:
+            raise serializers.ValidationError("El monto cancelado no puede ser mayor al monto total.")
+        return data
+
+class RecetaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Receta
+        fields = ['medicamento', 'dosis', 'fecha_emision', 'contenido']
+
+class ComposicionConsultaSerializer(serializers.ModelSerializer):
+    id_composicion = serializers.IntegerField(read_only=True)
+
+    diagnostico = EvaluacionDiagnosticoSerializer(many=True, required=False, allow_null=True)
+    observaciones = ObservacionSintomaSerializer(many=True, required=False, allow_null=True)
+    tratamientos = AccionTratamientoSerializer(many=True, required=False, allow_null=True)
+    recetas = RecetaSerializer(many=True, required=False, allow_null=True)
+    vacunas = MascotaVacunaSerializer(many=True, required=False, allow_null=True)
+    nombre_mascota = serializers.CharField(source='mascota.nombre', read_only=True)
+    nombre_duenio = serializers.CharField(source='mascota.propietario.nombre_completo', read_only=True)
+    nombre_veterinario = serializers.CharField(source='veterinario.nombre_completo', read_only=True) 
+
+    class Meta:
+        model = ComposicionConsulta
+        fields = [
+            'id_composicion',
+            'mascota', 'veterinario', 'fecha_consulta', 'motivo_consulta',
+            'costo_consulta', 'monto_cancelado', 'peso', 'temperatura', 'estado',
+            'diagnostico', 'observaciones', 'tratamientos', 'recetas', 'nombre_mascota', 'nombre_duenio', 'nombre_veterinario', 'vacunas'
+        ]
+
+    def _ensure_list(self, value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    @transaction.atomic
+    def create(self, validated_data):
+        diagnostico_data = self._ensure_list(validated_data.pop('diagnostico', []))
+        observaciones_data = self._ensure_list(validated_data.pop('observaciones', []))
+        tratamientos_data = self._ensure_list(validated_data.pop('tratamientos', []))
+        recetas_data = self._ensure_list(validated_data.pop('recetas', []))
+
+        composicion = ComposicionConsulta.objects.create(**validated_data)
+
+        for d in diagnostico_data:
+            EvaluacionDiagnostico.objects.create(composicion=composicion, **d)
+
+        for o in observaciones_data:
+            ObservacionSintoma.objects.create(composicion=composicion, **o)
+
+        for t in tratamientos_data:
+            AccionTratamiento.objects.create(composicion=composicion, **t)
+
+        for r in recetas_data:
+            Receta.objects.create(composicion=composicion, **r)
+
+        return composicion
+    
+
+class ObservacionSintomaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ObservacionSintoma
+        fields = ['id_observacion', 'descripcion', 'proporcionado_por', 'severidad_aparente']
+
+class EvaluacionDiagnosticoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EvaluacionDiagnostico
+        fields = ['id_diagnostico', 'diagnostico', 'clasificacion_cie', 'notas']
+
+class AccionTratamientoSerializer(serializers.ModelSerializer):
+    tratamiento_nombre = serializers.CharField(source='tratamiento.nombre_tratamiento', read_only=True)
+    nombre_mascota = serializers.CharField(source='composicion.mascota.nombre', required=False, allow_null=True)
+    nombre_duenio = serializers.CharField(source='composicion.mascota.propietario.nombre_completo', required=False, allow_null=True)
+    nombre_veterinario = serializers.CharField(source='composicion.veterinario.nombre_completo', required=False, allow_null=True)
+    class Meta:
+        model = AccionTratamiento
+        fields = ['nombre_duenio', 'nombre_veterinario', 'id_accion', 'nombre_mascota', 'tratamiento', 'tratamiento_nombre', 'fecha_inicio', 'fecha_fin', 'observaciones', 'monto_total', 'monto_cancelado', 'estado_tratamiento']
+
+
+class RecetaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Receta
+        fields = ['id_receta', 'fecha_emision', 'medicamento', 'dosis', 'contenido']
+

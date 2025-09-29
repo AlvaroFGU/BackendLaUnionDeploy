@@ -126,6 +126,7 @@ class MascotaVacuna(models.Model):
     lote_vacuna = models.CharField(max_length=50, blank=True, null=True)
     proxima_dosis = models.DateField(blank=True, null=True)
     estado = models.BooleanField(default=True)
+    composicion = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
         db_table = 'mascota_vacuna'
@@ -140,11 +141,12 @@ class Cita(models.Model):
         ('asistida', 'Asistida'),
         ('cancelada', 'Cancelada'),
         ('programada', 'Programada'),
+        ('no asistida', 'No Asistida'),
     ]
 
     id_cita = models.AutoField(primary_key=True)
     mascota = models.ForeignKey(Mascota, on_delete=models.CASCADE)
-    veterinario = models.ForeignKey(Usuario, on_delete=models.CASCADE, limit_choices_to={'rol': 'veterinario'})
+    veterinario = models.ForeignKey(Usuario, on_delete=models.CASCADE, limit_choices_to={'rol': 'veterinario'}, null=True)
     fecha_cita = models.DateTimeField()
     estado_cita = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
     motivo = models.TextField(blank=True, null=True)
@@ -162,11 +164,13 @@ class Cita(models.Model):
 class ComposicionConsulta(models.Model):
     id_composicion = models.AutoField(primary_key=True)
     mascota = models.ForeignKey(Mascota, on_delete=models.CASCADE)
-    veterinario = models.ForeignKey(Usuario, on_delete=models.CASCADE, limit_choices_to={'rol': 'veterinario'})
+    veterinario = models.ForeignKey(Usuario, on_delete=models.CASCADE, limit_choices_to={'rol': 'veterinario'},null=True)
     fecha_consulta = models.DateTimeField()
     motivo_consulta = models.TextField(blank=True, null=True)
     costo_consulta = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     monto_cancelado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    peso = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    temperatura = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     estado = models.BooleanField(default=True)
 
 
@@ -226,6 +230,11 @@ class Tratamiento(models.Model):
         return self.nombre_tratamiento
 
 class AccionTratamiento(models.Model):
+    ESTADOS_TRATAMIENTOS = [
+        ('en curso', 'En Curso'),
+        ('completado', 'Completado'),
+        ('cancelado', 'Cancelado'),
+    ]
     id_accion = models.AutoField(primary_key=True)
     composicion = models.ForeignKey(ComposicionConsulta, on_delete=models.CASCADE)
     tratamiento = models.ForeignKey(Tratamiento, on_delete=models.CASCADE)
@@ -234,6 +243,7 @@ class AccionTratamiento(models.Model):
     observaciones = models.TextField(blank=True, null=True)
     monto_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     monto_cancelado = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    estado_tratamiento = models.CharField(max_length=20, choices=ESTADOS_TRATAMIENTOS)
     estado = models.BooleanField(default=True)
 
     class Meta:
@@ -246,6 +256,8 @@ class Receta(models.Model):
     id_receta = models.AutoField(primary_key=True)
     composicion = models.ForeignKey(ComposicionConsulta, on_delete=models.CASCADE)
     fecha_emision = models.DateField()
+    medicamento = models.CharField(max_length=100)
+    dosis = models.CharField(max_length=2)
     contenido = models.TextField()
     estado = models.BooleanField(default=True)
 

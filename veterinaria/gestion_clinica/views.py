@@ -106,7 +106,9 @@ def login_usuario(request):
                 'rol': usuario.rol,
                 'fotografia': usuario.fotografia,
                 'access': str(refresh.access_token),
-                'refresh': str(refresh)
+                'refresh': str(refresh),
+                'codigo': usuario.codigo,
+                'ci': usuario.ci
             })
 
         else:
@@ -193,6 +195,13 @@ def crear_cliente(request):
     if serializer.is_valid():
         cliente = serializer.save()
         registrar_log(request.user.id_usuario, "Cliente", "crear", cliente.id_usuario)
+        asunto = 'Código de recuperación de contraseña'
+        mensaje = f'Hola {cliente.nombre_completo},\n\nTu contraseña es: {data['ci'] + "VetLaUnion"}'
+        remitente = None  
+        #destinatarios = [cliente.email]
+        destinatarios = ["alvarofredgonza18@gmail.com"]
+
+        send_mail(asunto, mensaje, remitente, destinatarios)
         return Response({"mensaje": "Cliente creado exitosamente."}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -452,15 +461,40 @@ def ver_mascota_vacuna(request, id_mascota_vacuna):
     serializer = MascotaVacunaSerializer(registro)
     return Response(serializer.data)
 
-# Crear
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def crear_mascota_vacuna(request):
     serializer = MascotaVacunaSerializer(data=request.data)
+    
     if serializer.is_valid():
-        serializer.save()
-        return Response({"mensaje": "Vacuna registrada para la mascota correctamente."}, status=status.HTTP_201_CREATED)
+        mascota = serializer.validated_data['mascota']
+        veterinario = serializer.validated_data['veterinario']
+        
+        consulta_data = {
+            'mascota': mascota.id_mascota,
+            'veterinario': veterinario.id_usuario,
+            'fecha_consulta': request.data.get('fecha_aplicacion'),  
+            'motivo_consulta': 'Aplicación de vacuna',
+            'costo_consulta': 0.00, 
+            'monto_cancelado': 0.00,  
+            'peso': 0.00, 
+            'temperatura': 0.00,  
+            'estado': True  
+        }
+
+        consulta_serializer = ComposicionConsultaSerializer(data=consulta_data)
+
+        if consulta_serializer.is_valid():
+            consulta = consulta_serializer.save() 
+
+            serializer.validated_data['composicion'] = consulta.id_composicion
+            serializer.save()
+            return Response({"mensaje": "Vacuna registrada para la mascota correctamente."}, status=status.HTTP_201_CREATED)
+        else:
+            return Response(consulta_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 # Editar
 @api_view(['PUT'])
@@ -550,18 +584,6 @@ def editar_cita(request, id_cita):
         return Response({"mensaje": "Cita actualizada correctamente."})
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# Eliminar (cambia estado a false)
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def eliminar_cita(request, id_cita):
-    try:
-        cita = Cita.objects.get(id_cita=id_cita)
-    except Cita.DoesNotExist:
-        return Response({"error": "Cita no encontrada"}, status=status.HTTP_404_NOT_FOUND)
-
-    cita.estado = False
-    cita.save()
-    return Response({"mensaje": "Cita eliminada correctamente."}, status=status.HTTP_200_OK)
 
 # Listar tratamientos activos
 @api_view(['GET'])
@@ -569,7 +591,6 @@ def eliminar_cita(request, id_cita):
 def listar_tratamientos(request):
     tratamientos = Tratamiento.objects.filter(estado=True)
     serializer = TratamientoSerializer(tratamientos, many=True)
-    registrar_log(request.user.id_usuario, "Tratamiento", "ver")
     return Response(serializer.data)
 
 
@@ -578,12 +599,12 @@ def listar_tratamientos(request):
 @permission_classes([IsAuthenticated])
 def ver_tratamiento(request, id_tratamiento):
     try:
-        tratamiento = Tratamiento.objects.get(id_tratamiento=id_tratamiento, estado=True)
+        tratamiento = Tratamiento.objects.get(id_tratamiento=id_tratamiento)
     except Tratamiento.DoesNotExist:
         return Response({"error": "Tratamiento no encontrado"}, status=status.HTTP_404_NOT_FOUND)
 
     serializer = TratamientoSerializer(tratamiento)
-    registrar_log(request.user.id_usuario, "Tratamiento", "ver")
+    registrar_log(request.user.id_usuario, "Tratamiento", "ver", id_tratamiento)
     return Response(serializer.data)
 
 
@@ -596,8 +617,8 @@ def crear_tratamiento(request):
 
     serializer = TratamientoSerializer(data=data)
     if serializer.is_valid():
-        serializer.save()
-        registrar_log(request.user.id_usuario, "Tratamiento", "crear")
+        tratamiento = serializer.save()
+        registrar_log(request.user.id_usuario, "Tratamiento", "crear", tratamiento.id_tratamiento)
         return Response({"mensaje": "Tratamiento creado correctamente."}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -614,7 +635,7 @@ def editar_tratamiento(request, id_tratamiento):
     serializer = TratamientoSerializer(tratamiento, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
-        registrar_log(request.user.id_usuario, "Tratamiento", "editar")
+        registrar_log(request.user.id_usuario, "Tratamiento", "editar", id_tratamiento)
         return Response({"mensaje": "Tratamiento actualizado correctamente."})
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -630,7 +651,7 @@ def eliminar_tratamiento(request, id_tratamiento):
 
     tratamiento.estado = False
     tratamiento.save()
-    registrar_log(request.user.id_usuario, "Tratamiento", "eliminar")
+    registrar_log(request.user.id_usuario, "Tratamiento", "eliminar", id_tratamiento)
     return Response({"mensaje": "Tratamiento eliminado correctamente."})
 
 
@@ -706,3 +727,608 @@ def crear_personal(request):
         registrar_log(request.user.id_usuario, "Personal", "crear", cliente.id_usuario)
         return Response({"mensaje": "Personal creado exitosamente."}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Veterinarios activos
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_veterinarios(request):
+    veterinarios = Usuario.objects.filter(rol="veterinario", estado=True)
+    data = [{"id_usuario": v.id_usuario, "nombre_completo": v.nombre_completo, "ci": v.ci} for v in veterinarios]
+    return Response(data)
+
+
+from django.shortcuts import get_object_or_404
+from datetime import datetime, timedelta, time
+from .serializers import CitaSerializer, MascotaSerializer
+
+from datetime import datetime, time, timedelta
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_horarios_libres(request):
+    fecha = request.query_params.get("fecha")
+    if not fecha:
+        return Response({"error": "Debe enviar una fecha"}, status=400)
+
+    fecha_dt = datetime.strptime(fecha, "%Y-%m-%d").date()
+    dia_semana = fecha_dt.weekday()  # 0 = lunes ... 6 = domingo
+
+    # reglas de horario
+    if dia_semana == 6:
+        return Response([])  # domingo no disponible
+    elif dia_semana == 5:
+        hora_inicio, hora_fin = time(10, 0), time(13, 0)
+    else:
+        hora_inicio, hora_fin = time(10, 0), time(19, 0)
+
+    horarios = []
+    actual = datetime.combine(fecha_dt, hora_inicio)
+
+    while actual.time() < hora_fin:
+        count = Cita.objects.filter(
+            fecha_cita__date=fecha_dt,
+            fecha_cita__time=actual.time(),
+            estado=True,
+            estado_cita__in=["pendiente", "programada"]
+        ).count()
+        ocupado = count >= 2 
+        if not ocupado:
+            horarios.append(actual.strftime("%H:%M"))
+        actual += timedelta(minutes=30)
+
+    return Response(horarios)
+
+
+# CRUD de citas
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_citas(request):
+    hoy = timezone.now().date()
+    
+    Cita.objects.filter(
+        estado=True,
+        fecha_cita__date__lt=hoy,
+        estado_cita='pendiente'
+    ).update(estado_cita='cancelada')
+    
+    Cita.objects.filter(
+        estado=True,
+        fecha_cita__date__lt=hoy,
+        estado_cita='programada'
+    ).update(estado_cita='no asistida')
+    
+    citas = Cita.objects.filter(estado=True).select_related("mascota", "mascota__propietario", "veterinario")
+    
+    serializer = CitaSerializer(citas, many=True)
+    return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crear_cita(request):
+    serializer = CitaSerializer(data=request.data)
+    if serializer.is_valid():
+        cita = serializer.save()
+        registrar_log(request.user.id_usuario, "Cita", "crear", cita.id_cita)
+        return Response(serializer.data, status=201)
+    return Response(serializer.errors, status=400)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def cancelar_cita(request, pk):
+    cita = get_object_or_404(Cita, pk=pk, estado=True)
+    cita.estado_cita = "cancelada"
+    cita.motivo = request.data.get("motivo", "")
+    cita.save()
+    return Response({"message": "Cita cancelada"})
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def programar_cita(request, pk):
+    cita = get_object_or_404(Cita, pk=pk, estado=True)
+    cita.estado_cita = "programada"
+    if "veterinario" in request.data:
+        cita.veterinario_id = request.data["veterinario"]
+    cita.save()
+    return Response({"message": "Cita programada"})
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def asistir_cita(request, pk):
+    cita = get_object_or_404(Cita, pk=pk, estado=True)
+    cita.estado_cita = "asistida"
+    cita.save()
+    return Response({"message": "Cita marcada como asistida"})
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def eliminar_cita(request, pk):
+    cita = get_object_or_404(Cita, pk=pk)
+    cita.estado = False
+    cita.save()
+    return Response({"message": "Cita eliminada"})
+
+
+#crear consulta compleja
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crear_consulta(request):
+    serializer = ComposicionConsultaSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"mensaje": "Consulta creada correctamente"}, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#lista consultas compleja
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_consultas(request):
+    try:
+        consultas = ComposicionConsulta.objects.filter(estado=True)
+        serializer = ComposicionConsultaSerializer(consultas, many=True)
+        data = serializer.data
+
+        for c in data:
+            cid = c['id_composicion']
+
+            obs_qs = ObservacionSintoma.objects.filter(composicion_id=cid)
+            c['observaciones'] = ObservacionSintomaSerializer(obs_qs, many=True).data
+
+            diag_qs = EvaluacionDiagnostico.objects.filter(composicion_id=cid)
+            c['diagnostico'] = EvaluacionDiagnosticoSerializer(diag_qs, many=True).data
+
+            trt_qs = AccionTratamiento.objects.filter(composicion_id=cid)
+            c['tratamientos'] = AccionTratamientoSerializer(trt_qs, many=True).data
+
+            rec_qs = Receta.objects.filter(composicion_id=cid)
+            c['recetas'] = RecetaSerializer(rec_qs, many=True).data
+
+        return Response(data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"mensaje": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+    # Consultas por ID de mascota
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_consultas_por_mascota(request, id_mascota):
+    try:
+        consultas = ComposicionConsulta.objects.filter(estado=True, mascota_id=id_mascota)
+        consulta_serializer = ComposicionConsultaSerializer(consultas, many=True)
+
+        for consulta in consulta_serializer.data:
+            consulta_id = consulta['id_composicion']
+
+            consulta['observaciones'] = ObservacionSintomaSerializer(
+                ObservacionSintoma.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['diagnostico'] = EvaluacionDiagnosticoSerializer(
+                EvaluacionDiagnostico.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['tratamientos'] = AccionTratamientoSerializer(
+                AccionTratamiento.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['recetas'] = RecetaSerializer(
+                Receta.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['vacunas'] = MascotaVacunaSerializer(
+                MascotaVacuna.objects.filter(composicion=consulta_id), many=True
+            ).data
+
+        return Response(consulta_serializer.data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"mensaje": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Consultas por ID de veterinario
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_consultas_por_veterinario(request, id_veterinario):
+    try:
+        consultas = ComposicionConsulta.objects.filter(estado=True, veterinario_id=id_veterinario)
+        consulta_serializer = ComposicionConsultaSerializer(consultas, many=True)
+
+        for consulta in consulta_serializer.data:
+            consulta_id = consulta['id_composicion']
+
+            consulta['observaciones'] = ObservacionSintomaSerializer(
+                ObservacionSintoma.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['diagnostico'] = EvaluacionDiagnosticoSerializer(
+                EvaluacionDiagnostico.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['tratamientos'] = AccionTratamientoSerializer(
+                AccionTratamiento.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+            consulta['recetas'] = RecetaSerializer(
+                Receta.objects.filter(composicion_id=consulta_id), many=True
+            ).data
+
+        return Response(consulta_serializer.data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"mensaje": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Consulta por ID de composición (consulta específica)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_consulta_por_id(request, id_composicion):
+    try:
+        consulta = ComposicionConsulta.objects.filter(estado=True, id_composicion=id_composicion).first()
+        if not consulta:
+            return Response({"mensaje": "Consulta no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+
+        consulta_serializer = ComposicionConsultaSerializer(consulta)
+
+        consulta_data = consulta_serializer.data
+        consulta_id = consulta_data['id_composicion']
+
+        consulta_data['observaciones'] = ObservacionSintomaSerializer(
+            ObservacionSintoma.objects.filter(composicion_id=consulta_id), many=True
+        ).data
+
+        consulta_data['diagnostico'] = EvaluacionDiagnosticoSerializer(
+            EvaluacionDiagnostico.objects.filter(composicion_id=consulta_id), many=True
+        ).data
+
+        consulta_data['tratamientos'] = AccionTratamientoSerializer(
+            AccionTratamiento.objects.filter(composicion_id=consulta_id), many=True
+        ).data
+
+        consulta_data['recetas'] = RecetaSerializer(
+            Receta.objects.filter(composicion_id=consulta_id), many=True
+        ).data
+
+        return Response(consulta_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"mensaje": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    
+# Listar accion_tratamientos activos
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_accion_tratamientos(request):
+    accion_tratamientos = AccionTratamiento.objects.filter(estado=True)
+    serializer = AccionTratamientoSerializer(accion_tratamientos, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_especies(request):
+    especies = Mascota.objects.filter(estado=True).values_list('especie', flat=True).distinct()
+
+    return Response(especies)
+
+# views_tratamientos.py  (puedes ponerlo en tu views.py si prefieres)
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import AccionTratamiento
+from .serializers import AccionTratamientoSerializer
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def actualizar_pago_tratamiento(request, id_tratamiento: int):
+    try:
+        tratamiento = AccionTratamiento.objects.select_for_update().get(pk=id_tratamiento)
+    except AccionTratamiento.DoesNotExist:
+        return Response({"detail": "Tratamiento no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+    monto_raw = request.data.get("monto_a_sumar", None)
+    if monto_raw is None:
+        return Response({"monto_a_sumar": ["Este campo es obligatorio."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        monto = Decimal(str(monto_raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return Response({"monto_a_sumar": ["Debe ser un número válido."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    if monto < 0:
+        return Response({"monto_a_sumar": ["No puede ser negativo."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    total = tratamiento.monto_total or Decimal("0")
+    cancelado = tratamiento.monto_cancelado or Decimal("0")
+    saldo = total - cancelado
+    if monto > saldo:
+        return Response(
+            {"monto_a_sumar": [f"El monto no puede ser mayor al saldo ({saldo})."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    tratamiento.monto_cancelado = cancelado + monto
+    tratamiento.save(update_fields=["monto_cancelado"])
+
+    return Response(AccionTratamientoSerializer(tratamiento).data, status=status.HTTP_200_OK)
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def actualizar_estado_tratamiento(request, id_tratamiento: int):
+    try:
+        tratamiento = AccionTratamiento.objects.get(pk=id_tratamiento)
+    except AccionTratamiento.DoesNotExist:
+        return Response({"detail": "Tratamiento no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+    nuevo_estado = (request.data.get("estado_tratamiento") or "").strip().lower()
+    validos = {"en curso", "completado", "cancelado"}
+    if nuevo_estado not in validos:
+        return Response(
+            {"estado_tratamiento": [f"Estado inválido. Válidos: {', '.join(sorted(validos))}."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    tratamiento.estado_tratamiento = nuevo_estado
+    tratamiento.save(update_fields=["estado_tratamiento"])
+
+    return Response(AccionTratamientoSerializer(tratamiento).data, status=status.HTTP_200_OK)
+
+
+#exportar historial
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def exportar_datos_historial(request, id_mascota):
+    try:
+        mascota = Mascota.objects.get(pk=id_mascota)
+        
+        propietario = mascota.propietario
+        
+        # Obtener las consultas relacionadas con la mascota
+        consultas = ComposicionConsulta.objects.filter(mascota=mascota)
+        
+        vacunas = MascotaVacuna.objects.filter(mascota=mascota)
+        
+        # Formato de la respuesta
+        response_data = {
+            "context": {
+                "owner": {
+                    "owner_name": propietario.nombre_completo,
+                    "owner_address": propietario.direccion or "No disponible",
+                    "owner_phone": str(propietario.telefono) if propietario.telefono else "No disponible",
+                    "owner_email": propietario.email,
+                    "owner_id": str(propietario.ci),
+                },
+                "pet": {
+                    "pet_name": mascota.nombre,
+                    "species": mascota.especie,
+                    "breed": mascota.raza,
+                    "date_of_birth": mascota.fecha_nacimiento.strftime("%Y-%m-%d"),
+                    "sex": "Macho" if mascota.sexo == 'M' else "Hembra",
+                }
+            },
+            "clinical_data": []
+        }
+        
+        # Recopilación de datos clínicos
+        for consulta in consultas:
+            data = {
+                "weight": f"{consulta.peso}kg",
+                "temperature": f"{consulta.temperatura}°C",
+                "symptoms": [],
+                "diagnosis": [],
+                "treatments": [],
+                "vaccines": []
+            }
+
+            # Obtener observaciones
+            observaciones = ObservacionSintoma.objects.filter(composicion=consulta)
+            for obs in observaciones:
+                data["symptoms"].append({
+                    "symptom": obs.descripcion,
+                    "severity": obs.severidad_aparente,
+                })
+            
+            # Obtener diagnóstico
+            diagnosticos = consulta.evaluaciondiagnostico_set.all()
+            for diag in diagnosticos:
+                data["diagnosis"].append({
+                    "description": diag.diagnostico,
+                    "code": diag.clasificacion_cie,
+                })
+            
+            # Obtener tratamientos
+            tratamientos = AccionTratamiento.objects.filter(composicion=consulta)
+            for tratamiento in tratamientos:
+                data["treatments"].append({
+                    "name": tratamiento.tratamiento.nombre_tratamiento,
+                    "dosage": tratamiento.observaciones,
+                    "route": tratamiento.tratamiento.via_administracion or "No especificado",
+                    "date_start": tratamiento.fecha_inicio.strftime("%Y-%m-%d"),
+                    "date_finish": tratamiento.fecha_fin.strftime("%Y-%m-%d"),
+                })
+            
+            # Obtener vacunas (Vacunas aplicadas en consulta)
+            vacunas_aplicadas = MascotaVacuna.objects.filter(composicion=consulta.id_composicion)
+            for vacuna in vacunas_aplicadas:
+                data["vaccines"].append({
+                    "vaccine_name": vacuna.vacuna.nombre_vacuna,
+                    "date_administered": vacuna.fecha_aplicacion.strftime("%Y-%m-%d"),
+                    "next_due": vacuna.proxima_dosis.strftime("%Y-%m-%d") if vacuna.proxima_dosis else "No disponible"
+                })
+            
+            response_data["clinical_data"].append(data)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"mensaje": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#importarhistorial
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def importar_historial(request):
+    try:
+        data = request.data
+        
+        # Validar estructura básica
+        if not data.get('context') or not data.get('clinical_data'):
+            return Response({"mensaje": "Estructura de datos inválida"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        context = data['context']
+        clinical_data = data['clinical_data']
+        
+        with transaction.atomic():
+            # 1. Crear o obtener propietario
+            owner_data = context.get('owner', {})
+            
+            # Preparar datos para el serializer
+            cliente_data = {
+                'ci': owner_data.get('owner_id', ''),
+                'nombre_completo': owner_data.get('owner_name', ''),
+                'direccion': owner_data.get('owner_address', ''),
+                'telefono': owner_data.get('owner_phone', ''),
+                'email': owner_data.get('owner_email', ''),
+                'rol': 'cliente',
+                'codigo': '-99',
+                'contrasenia_hash': 'vetImportData'
+            }
+            
+            # Verificar si el cliente ya existe
+            try:
+                propietario = Usuario.objects.get(ci=cliente_data['ci'])
+                # Si existe, actualizar los datos si es necesario
+                serializer = ClienteSerializer(propietario, data=cliente_data, partial=True)
+            except Usuario.DoesNotExist:
+                # Si no existe, crear nuevo cliente
+                serializer = ClienteSerializer(data=cliente_data)
+            
+            if serializer.is_valid():
+                propietario = serializer.save()
+            else:
+                return Response({
+                    "mensaje": "Error en datos del propietario",
+                    "errores": serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 2. Crear o obtener mascota
+            pet_data = context.get('pet', {})
+            mascota, created = Mascota.objects.get_or_create(
+                nombre=pet_data.get('pet_name'),
+                propietario=propietario,
+                defaults={
+                    'especie': pet_data.get('species', ''),
+                    'raza': pet_data.get('breed', ''),
+                    'fecha_nacimiento': parse_date(pet_data.get('date_of_birth')),
+                    'sexo': 'M' if pet_data.get('sex') == 'Macho' else 'H',
+                }
+            )
+            
+            consultas_importadas = 0
+            
+            # 3. Procesar cada consulta clínica
+            for consulta_data in clinical_data:
+                try:
+                    # Crear composición de consulta
+                    composicion = ComposicionConsulta.objects.create(
+                        mascota=mascota,
+                        peso=extract_number(consulta_data.get('weight', '0')),
+                        temperatura=extract_number(consulta_data.get('temperature', '0')),
+                        fecha_consulta=timezone.now().date(),  # O usar fecha del archivo si está disponible
+                    )
+                    
+                    # # 4. Procesar síntomas/observaciones
+                    # for symptom in consulta_data.get('symptoms', []):
+                    #     ObservacionSintoma.objects.create(
+                    #         composicion=composicion,
+                    #         descripcion=symptom.get('symptom', ''),
+                    #         severidad_aparente=symptom.get('severity', 'leve'),
+                    #     )
+                    
+                    # # 5. Procesar diagnósticos
+                    # for diagnosis in consulta_data.get('diagnosis', []):
+                    #     EvaluacionDiagnostico.objects.create(
+                    #         composicion=composicion,
+                    #         diagnostico=diagnosis.get('description', ''),
+                    #         clasificacion_cie=diagnosis.get('code', ''),
+                    #     )
+                    
+                    # # 6. Procesar tratamientos
+                    # for treatment in consulta_data.get('treatments', []):
+                    #     # Crear o obtener tratamiento base
+                    #     tratamiento_base, created = Tratamiento.objects.get_or_create(
+                    #         nombre_tratamiento=treatment.get('name', 'Tratamiento'),
+                    #         defaults={
+                    #             'via_administracion': treatment.get('route', 'No especificado'),
+                    #             'user': request.user
+                    #         }
+                    #     )
+                        
+                    #     AccionTratamiento.objects.create(
+                    #         composicion=composicion,
+                    #         tratamiento=tratamiento_base,
+                    #         observaciones=treatment.get('dosage', ''),
+                    #         fecha_inicio=parse_date(treatment.get('date_start')),
+                    #         fecha_fin=parse_date(treatment.get('date_finish')),
+                    #         user=request.user
+                    #     )
+                    
+                    # # 7. Procesar vacunas
+                    # for vaccine in consulta_data.get('vaccines', []):
+                    #     # Crear o obtener vacuna base
+                    #     vacuna_base, created = Vacuna.objects.get_or_create(
+                    #         nombre_vacuna=vaccine.get('vaccine_name', 'Vacuna'),
+                    #         defaults={'user': request.user}
+                    #     )
+                        
+                    #     MascotaVacuna.objects.create(
+                    #         mascota=mascota,
+                    #         vacuna=vacuna_base,
+                    #         composicion=composicion,
+                    #         fecha_aplicacion=parse_date(vaccine.get('date_administered')),
+                    #         proxima_dosis=parse_date(vaccine.get('next_due')),
+                    #         user=request.user
+                    #     )
+                    
+                    # consultas_importadas += 1
+                    
+                except Exception as e:
+                    # Continuar con la siguiente consulta si hay error en una
+                    print(f"Error procesando consulta: {str(e)}")
+                    continue
+            
+            return Response({
+                "mensaje": "Importación completada",
+                "consultas_importadas": consultas_importadas,
+                "mascota_id": mascota.id_mascota,
+                "propietario_id": propietario.id_usuario
+            }, status=status.HTTP_201_CREATED)
+            
+    except Exception as e:
+        return Response({"mensaje": f"Error en la importación: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+def parse_date(date_string):
+    """Convierte string de fecha a objeto date"""
+    if not date_string or date_string == "No disponible":
+        return None
+    try:
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
+    except:
+        return None
+
+def extract_number(text):
+    """Extrae número de texto como '75kg' -> 75.0"""
+    if not text:
+        return 0.0
+    try:
+        import re
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
+        return float(numbers[0]) if numbers else 0.0
+    except:
+        return 0.0

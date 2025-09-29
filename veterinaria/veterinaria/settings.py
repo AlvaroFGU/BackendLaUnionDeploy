@@ -138,7 +138,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://frontendlauniondeploy-production-7135.up.railway.app/",
+    "https://frontendlauniondeploy-production-7135.up.railway.app",
 ]
 
 from datetime import timedelta
@@ -146,7 +146,7 @@ from datetime import timedelta
 AUTH_USER_MODEL = 'gestion_clinica.Usuario'
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=120),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "USER_ID_FIELD": "id_usuario",
     "USER_ID_CLAIM": "user_id",
